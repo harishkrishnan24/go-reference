@@ -1,24 +1,28 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"math/rand"
 	"os"
-	"path"
 	"strconv"
+	"strings"
 )
 
 type Entry struct {
-	Name    string
-	Surname string
-	Tel     string
+	Name       string
+	Surname    string
+	Tel        string
+	LastAccess string
 }
 
 var data = []Entry{}
+var index map[string]int
 
 const (
-	MIN = 0
-	MAX = 94
+	MIN     = 0
+	MAX     = 94
+	CSVFILE = "./"
 )
 
 func search(key string) *Entry {
@@ -65,30 +69,113 @@ func random(min, max int) int {
 	return rand.Intn(max-min) + min
 }
 
+func readCSVFile(filepath string) ([][]string, error) {
+	_, err := os.Stat(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(filepath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	lines, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return [][]string{}, err
+	}
+
+	return lines, nil
+}
+
 func main() {
 	arguments := os.Args
 	if len(arguments) == 1 {
-		exe := path.Base(arguments[0])
-		fmt.Printf("Usage: %s search|list <arguments>\n", exe)
+		fmt.Println("Usage: insert|delete|search|list <arguments>")
 		return
 	}
 
-	data = append(data, Entry{"Mihalis", "Tsoukalos", "2109416471"})
-	data = append(data, Entry{"Mary", "Doe", "2109416871"})
-	data = append(data, Entry{"John", "Black", "2109416123"})
+	_, err := os.Stat(CSVFILE)
+	if err != nil {
+		fmt.Println("Creating", CSVFILE)
+		f, err := os.Create(CSVFILE)
+		if err != nil {
+			f.Close()
+			fmt.Println(err)
+			return
+		}
+		f.Close()
+	}
+
+	fileInfo, err := os.Stat(CSVFILE)
+	mode := fileInfo.Mode()
+	if !mode.IsRegular() {
+		fmt.Println(CSVFILE, "not a regular file!")
+		return
+	}
+
+	_, err = readCSVFile(CSVFILE)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	err = createIndex()
+	if err != nil {
+		fmt.Println("Cannot create index.")
+		return
+	}
 
 	switch arguments[1] {
+	case "insert":
+		if len(arguments) != 5 {
+			fmt.Println("Usage: insert Name Surname Telephone")
+			return
+		}
+		t := strings.ReplaceAll(arguments[4], "-", "")
+		if !matchTel(t) {
+			fmt.Println("Not a valid telephone number:", t)
+			return
+		}
+		temp := initS(arguments[2], arguments[3], t)
+		if temp != nil {
+			err := insert(temp)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+		}
+	case "delete":
+		if len(arguments) != 3 {
+			fmt.Println("Usage: delete Number")
+			return
+		}
+		t := strings.ReplaceAll(arguments[2], "-", "")
+		if !matchTel(t) {
+			fmt.Println("Not a valid telephone number:", t)
+			return
+		}
+		err := deleteEntry(t)
+		if err != nil {
+			fmt.Println(err)
+		}
 	case "search":
 		if len(arguments) != 3 {
-			fmt.Println("Usage: search Surname")
+			fmt.Println("Usage: search Number")
 			return
 		}
-		result := search(arguments[2])
-		if result == nil {
-			fmt.Println("Entry not found:", arguments[2])
+		t := strings.ReplaceAll(arguments[2], "-", "")
+		if !matchTel(t) {
+			fmt.Println("Not a valid telephone number:", t)
 			return
 		}
-		fmt.Println(*result)
+		temp := search(t)
+		if temp == nil {
+			fmt.Println("Number not found:", t)
+			return
+		}
+		fmt.Println(*temp)
 	case "list":
 		list()
 	default:
