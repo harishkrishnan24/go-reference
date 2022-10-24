@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
-	"math/rand"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Entry struct {
@@ -26,47 +27,18 @@ const (
 )
 
 func search(key string) *Entry {
-	for i, v := range data {
-		if v.Tel == key {
-			return &data[i]
-		}
+	i, ok := index[key]
+	if !ok {
+		return nil
 	}
-	return nil
+	data[i].LastAccess = strconv.FormatInt(time.Now().Unix(), 10)
+	return &data[i]
 }
 
 func list() {
 	for _, v := range data {
 		fmt.Println(v)
 	}
-}
-
-func populate(n int, s []Entry) {
-	for i := 0; i < n; i++ {
-		name := getString(4)
-		surname := getString(5)
-		n := strconv.Itoa(random(100, 199))
-		data = append(data, Entry{name, surname, n})
-	}
-}
-
-func getString(len int64) string {
-	temp := ""
-	startChar := "!"
-	var i int64 = 1
-	for {
-		myRand := random(MIN, MAX)
-		newChar := string(startChar[0] + byte(myRand))
-		temp = temp + newChar
-		if i == len {
-			break
-		}
-		i++
-	}
-	return temp
-}
-
-func random(min, max int) int {
-	return rand.Intn(max-min) + min
 }
 
 func readCSVFile(filepath string) ([][]string, error) {
@@ -87,6 +59,67 @@ func readCSVFile(filepath string) ([][]string, error) {
 	}
 
 	return lines, nil
+}
+
+func createIndex() error {
+	index = make(map[string]int)
+	for i, k := range data {
+		key := k.Tel
+		index[key] = i
+	}
+	return nil
+}
+
+func matchTel(s string) bool {
+	t := []byte(s)
+	re := regexp.MustCompile(`^[-+]?\d+$`)
+	return re.Match(t)
+}
+
+func deleteEntry(key string) error {
+	i, ok := index[key]
+	if !ok {
+		return fmt.Errorf("%s cannot be found!", key)
+	}
+	data = append(data[:i], data[i+1:]...)
+	delete(index, key)
+	err := saveCSVFile(CSVFILE)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func saveCSVFile(filepath string) error {
+	csvfile, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+	defer csvfile.Close()
+
+	csvwriter := csv.NewWriter(csvfile)
+	csvwriter.Comma = '\t'
+
+	for _, row := range data {
+		temp := []string{row.Name, row.Surname, row.Tel, row.LastAccess}
+		_ = csvwriter.Write(temp)
+	}
+	csvwriter.Flush()
+	return nil
+}
+
+func insert(pS *Entry) error {
+	_, ok := index[(*pS).Tel]
+	if ok {
+		return fmt.Errorf("%s already exists", pS.Tel)
+	}
+	data = append(data, *pS)
+	_ = createIndex()
+	err := saveCSVFile(CSVFILE)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func main() {
@@ -138,7 +171,7 @@ func main() {
 			fmt.Println("Not a valid telephone number:", t)
 			return
 		}
-		temp := initS(arguments[2], arguments[3], t)
+		temp := &Entry{Name: arguments[2], Surname: arguments[3], Tel: t}
 		if temp != nil {
 			err := insert(temp)
 			if err != nil {
